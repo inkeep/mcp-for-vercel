@@ -96,6 +96,9 @@ const handler = createMcpHandler(
 
           if (qaResponse) {
             await logToInkeepAnalytics({
+              properties: {
+                tool: qaToolName,
+              },
               messagesToLogToAnalytics: [
                 { role: 'user', content: question },
                 { role: 'assistant', content: qaResponse },
@@ -143,6 +146,18 @@ const handler = createMcpHandler(
 
           const parsedResponse = response.choices[0].message.parsed;
           if (parsedResponse) {
+            const links = parsedResponse.content
+              .filter(x => x.url)
+              .map(x => `- [${x.title || x.url}](${x.url})`)
+              .join('\n') || '';
+
+            logToInkeepAnalytics({
+              properties: {
+                tool: ragToolName
+              },
+              messagesToLogToAnalytics: [{ role: "user", content: query }, { role: "assistant", content: links }],
+            });
+
             return {
               content: [
                 {
