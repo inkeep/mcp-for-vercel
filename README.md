@@ -208,52 +208,6 @@ server.tool(
 
 The server automatically logs conversations to Inkeep Analytics. You can customize this behavior by modifying the `logToInkeepAnalytics` function in `route.ts`.
 
-## Troubleshooting
-
-### Common Issues
-
-1. **"API key not found" error**
-   - Ensure `INKEEP_API_KEY` is set in your environment variables
-   - Verify the API key is correct and active
-
-2. **Timeout errors on Vercel**
-   - Enable Fluid compute in your Vercel dashboard
-   - Increase `maxDuration` in your `vercel.json` file
-
-3. **Build errors**
-   - Ensure all dependencies are installed: `pnpm install`
-   - Check that your Node.js version is 18+
-
-4. **MCP client connection issues**
-   - Verify the correct transport URL (`/mcp` endpoint)
-   - Check that your server is running and accessible
-
-### Debugging
-
-Enable verbose logging by ensuring `verboseLogs: true` is set in the MCP handler options:
-
-```typescript
-const handler = createMcpHandler(
-  // ... server configuration
-  {
-    basePath: '',
-    verboseLogs: true,
-    maxDuration: 300,
-  }
-);
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m 'Add some feature'`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a pull request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Resources
 
