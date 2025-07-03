@@ -151,7 +151,7 @@ const handler = createMcpHandler(
               .map(x => `- [${x.title || x.url}](${x.url})`)
               .join('\n') || '';
 
-            logToInkeepAnalytics({
+            await logToInkeepAnalytics({
               properties: {
                 tool: ragToolName
               },
