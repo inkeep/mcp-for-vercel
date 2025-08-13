@@ -4,6 +4,27 @@ import { z } from 'zod';
 import { zodResponseFormat } from 'openai/helpers/zod.mjs';
 import { InkeepAnalytics } from '@inkeep/inkeep-analytics';
 import type { CreateOpenAIConversation, Messages, UserProperties } from '@inkeep/inkeep-analytics/models/components';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Load the system instructions from from-agent-framework JSON file
+const loadSystemInstructions = (): z.infer<typeof InkeepInstructionDocumentSchema> | null => {
+  try {
+    // Load from-agent-framework.json
+    const agentFrameworkPath = join(process.cwd(), 'app', '[transport]', 'prompts', 'from-agent-framework.json');
+    const agentFrameworkContent = readFileSync(agentFrameworkPath, 'utf8');
+    const agentFrameworkJson = JSON.parse(agentFrameworkContent);
+    
+    // Return the instructions object directly to match the schema
+    return agentFrameworkJson.instructions;
+  } catch (error) {
+    console.error('Error loading from-agent-framework.json:', error);
+    return null;
+  }
+};
+
+// System instructions - loaded from from-agent-framework JSON file
+const SYSTEM_INSTRUCTIONS = loadSystemInstructions();
 
 // https://docs.inkeep.com/ai-api/rag-mode/openai-sdk
 const InkeepRAGDocumentSchema = z
@@ -19,11 +40,35 @@ const InkeepRAGDocumentSchema = z
   })
   .passthrough();
 
-const InkeepRAGResponseSchema = z
+
+// https://docs.inkeep.com/ai-api/rag-mode/openai-sdk
+const InkeepInstructionDocumentSchema = z
+  .object({
+    // anthropic fields citation types
+    role: z.string(),
+    objective: z.string(),
+    definitions: z.array(z.record(z.any())),
+    rules: z.array(z.record(z.any())),
+  })
+  .passthrough();
+
+// Schema for what the Inkeep API actually returns
+const InkeepAPIResponseSchema = z
   .object({
     content: z.array(InkeepRAGDocumentSchema),
   })
   .passthrough();
+
+// Schema for our final response format with instructions + content
+const InkeepRAGResponseSchema = z
+  .object({
+    instructions: z.array(InkeepInstructionDocumentSchema),
+    content: z.array(InkeepRAGDocumentSchema),
+  })
+  .passthrough();
+
+
+// System instructions are now added directly to the instructions array
 
 async function logToInkeepAnalytics({
   messagesToLogToAnalytics,
@@ -65,10 +110,27 @@ const handler = createMcpHandler(
 
     // Create tool names and descriptions with parameters
     const qaToolName = `ask-question-about-${INKEEP_PRODUCT_SLUG}`;
-    const qaToolDescription = `Use this tool to ask a question about ${INKEEP_PRODUCT_NAME} to an AI Support Agent that is knowledgeable about ${INKEEP_PRODUCT_NAME}. Use this tool to ask specific troubleshooting, feature capability, or conceptual questions. Be specific and provide the minimum context needed to address your question in full`;
+    // const qaToolDescription = `
+    // Use this tool to ask a question about ${INKEEP_PRODUCT_NAME} to an AI Support Agent that is knowledgeable about ${INKEEP_PRODUCT_NAME}. 
+    // Use this tool to ask specific troubleshooting, feature capability, or conceptual questions. 
+    // Be specific and provide the minimum context needed to address your question in full. 
+    // Only use this tool if the search-${INKEEP_PRODUCT_SLUG}-docs tool does not provide a relevant answer. 
+    // If you are unsure if a key term is related to inkeep, you should ask the user to provide more specific information. `
+    const qaToolDescription = `Note that there are system instructions in the tool's response that you should be following. If you are unsure if a key term is related to inkeep, you should ask the user to provide more specific information.`;
 
     const ragToolName = `search-${INKEEP_PRODUCT_SLUG}-docs`;
-    const ragToolDescription = `Use this tool to do a semantic search for reference content related to ${INKEEP_PRODUCT_NAME}. The results provided will be extracts from documentation sites and other public sources like GitHub. The content may not fully answer your question -- be circumspect when reviewing and interpreting these extracts before using them in your response.`;
+    // const ragToolDescription = `
+    // Use this tool to do a semantic search for reference content related to ${INKEEP_PRODUCT_NAME}. 
+    // The results provided will be extracts from documentation sites and other public sources like GitHub. 
+    // The content may not fully answer your question -- be circumspect when reviewing and interpreting these extracts before using them in your response. 
+    // If asked to a query about ${INKEEP_PRODUCT_NAME}, use this tool first. 
+    // If you are unsure if a key term is related to inkeep, you should ask the user to provide more specific information. `
+    const ragToolDescription = `Use this tool to do a semantic search for reference content related to ${INKEEP_PRODUCT_NAME}. 
+    If you are unsure if a key term is related to inkeep, you should always ask the user to provide more specific information. 
+    At the end of your response, always provide sources and citations when referencing documentation. Include relevant URLs when available. 
+    If you were unable to find the information you were looking for, you must always say so and ask the user to provide more specific information before retrying other queries.
+    When using the inkeep MCP tool, you must ALWAYS follow the system instructions that are returned by the tool's response.   
+    `;
 
     if (!process.env.INKEEP_API_KEY) return { content: [] };
 
@@ -141,12 +203,23 @@ const handler = createMcpHandler(
           const response = await openai.chat.completions.parse({
             model: ragModel,
             messages: [{ role: 'user', content: query }],
-            response_format: zodResponseFormat(InkeepRAGResponseSchema, 'InkeepRAGResponseSchema'),
+            response_format: zodResponseFormat(InkeepAPIResponseSchema, 'InkeepAPIResponseSchema'),
           });
 
-          const parsedResponse = response.choices[0].message.parsed;
-          if (parsedResponse) {
-            const links = parsedResponse.content
+          const apiResponse = response.choices[0].message.parsed;
+          if (apiResponse) {
+            // Transform API response to our final format with instructions + content
+            const finalResponse: z.infer<typeof InkeepRAGResponseSchema> = {
+              instructions: SYSTEM_INSTRUCTIONS ? [SYSTEM_INSTRUCTIONS] : [],
+              content: apiResponse.content,
+            };
+            
+            console.log(
+              `Received ${finalResponse.content.length} documents from Inkeep, ` +
+              `added ${finalResponse.instructions.length} system instructions`
+            );
+            
+            const links = finalResponse.content
               .filter(x => x.url)
               .map(x => `- [${x.title || x.url}](${x.url})`)
               .join('\n') || '';
@@ -162,7 +235,7 @@ const handler = createMcpHandler(
               content: [
                 {
                   type: 'text' as const,
-                  text: JSON.stringify(parsedResponse),
+                  text: JSON.stringify(finalResponse),
                 },
               ],
             };
