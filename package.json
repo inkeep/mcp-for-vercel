@@ -10,7 +10,7 @@
   "dependencies": {
     "@inkeep/inkeep-analytics": "0.2.4-alpha.27",
     "@vercel/mcp-adapter": "0.8.2",
-    "next": "15.2.4",
+    "next": "15.4.8",
     "openai": "^5.1.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
