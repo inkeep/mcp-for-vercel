@@ -27,7 +27,7 @@ An Inkeep MCP Server with Next.js, deployable to Vercel. It includes two tools:
 
 To use the Inkeep MCP server, you’ll need an Inkeep API key.
 
-- Go to the Inkeep portal and create an API key by following their authentication guide.
+- Go to the Inkeep portal and follow these steps [Get an API key](https://docs.inkeep.com/cloud/ai-api/chat-completions-api#get-an-api-key).
 - When making MCP requests, include your API key in the Authorization header using the Bearer format:
 ```
 Authorization: Bearer INKEEP_API_KEY
